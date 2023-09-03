@@ -15,7 +15,7 @@ function sign(m, x) {
   var R = secp256k1.publicKeyCreate(k);
 
   // e = h(address(R) || compressed pubkey || m)
-  var e = challenge(R, m, publicKey);
+  var e = challenge(R, m);
 
   // xe = x * e
   var xe = secp256k1.privateKeyTweakMul(x, e);
@@ -25,7 +25,7 @@ function sign(m, x) {
   return {R, s, e};
 }
 
-function challenge(R, m, publicKey) {
+function challenge(R, m) {
   // convert R to address
   // see https://github.com/ethereum/go-ethereum/blob/eb948962704397bb861fd4c0591b5056456edd4d/crypto/crypto.go#L275
   var R_uncomp = secp256k1.publicKeyConvert(R, false);
@@ -33,8 +33,8 @@ function challenge(R, m, publicKey) {
 
   // e = keccak256(address(R) || compressed publicKey || m)
   var e = arrayify(ethers.utils.solidityKeccak256(
-      ["address", "uint8", "bytes32", "bytes32"],
-      [R_addr, publicKey[0] + 27 - 2, publicKey.slice(1, 33), m]));
+      ["address", "bytes32"],
+      [R_addr,  m]));
 
   return e;
 }
@@ -53,12 +53,12 @@ describe("Schnorr", function () {
 
     var publicKey = secp256k1.publicKeyCreate(privKey);
 
-    // message 
+    // message
     var m = randomBytes(32);
 
     var sig = sign(m, privKey);
 
-    let gas = await schnorr.estimateGas.verify(
+    let gas = await schnorr.estimateGas.verify2(
       publicKey[0] - 2 + 27,
       publicKey.slice(1, 33),
       arrayify(m),
@@ -67,7 +67,7 @@ describe("Schnorr", function () {
     )
     console.log("verify gas cost:", gas);
 
-    expect(await schnorr.verify(
+    expect(await schnorr.verify2(
       publicKey[0] - 2 + 27,
       publicKey.slice(1, 33),
       arrayify(m),
@@ -75,4 +75,20 @@ describe("Schnorr", function () {
       sig.s,
     )).to.equal(true);
   });
-});
+
+  it("compare with addition", async function () {
+    const Schnorr = await ethers.getContractFactory("Schnorr");
+    const schnorr = await Schnorr.deploy();
+    const gas=await schnorr.estimateGas.add(4,5);
+    console.log("verify gas cost:", gas);
+    expect(await schnorr.add(4,5)).to.equal(9)
+  })
+  it("compare with mul", async function () {
+    const Schnorr = await ethers.getContractFactory("Schnorr");
+    const schnorr = await Schnorr.deploy();
+    const gas=await schnorr.estimateGas.mult(4,5);
+    console.log("verify gas cost:", gas);
+    expect(await schnorr.mult(4,5)).to.equal(20)
+  })
+
+  });
