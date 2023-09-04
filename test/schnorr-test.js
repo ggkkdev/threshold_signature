@@ -58,7 +58,7 @@ describe("Schnorr", function () {
 
     var sig = sign(m, privKey);
 
-    let gas = await schnorr.estimateGas.verify2(
+    let gas = await schnorr.estimateGas.verify(
       publicKey[0] - 2 + 27,
       publicKey.slice(1, 33),
       arrayify(m),
@@ -67,7 +67,7 @@ describe("Schnorr", function () {
     )
     console.log("verify gas cost:", gas);
 
-    expect(await schnorr.verify2(
+    expect(await schnorr.verify(
       publicKey[0] - 2 + 27,
       publicKey.slice(1, 33),
       arrayify(m),
