@@ -39,7 +39,8 @@ class SSS {
     constructor(numParticipants, threshold) {
         this.numParticipants = numParticipants
         this.polynomialSkis = Polynomial.random(threshold);
-        this.polynomialKis = Polynomial.random(threshold);
+        this.interpolation=null
+        //this.polynomialKis = Polynomial.random(threshold);
         //this.polynomialSkis = new Polynomial([new BN(112).toBuffer(), new BN(2).toBuffer()])
         this.skis = []
         this.pkis = []
@@ -47,6 +48,7 @@ class SSS {
         this.kis = []
         this.Ris = []
         this.R = []
+        this.k = []
         this.preRis = []
 
         const _ = [...Array(numParticipants).keys()].forEach(e => {
@@ -55,9 +57,13 @@ class SSS {
             this.pkis.push(y)
             this.pres.push(pre)
         })
-        const interpolatedPublicKey = this.getInterpolatedPublicKey(this.pres, this.skis)
-        this.pk = interpolatedPublicKey.pk
-        this.sk = interpolatedPublicKey.sk
+        const points = this.skis.map((e, i) => {
+            return {x: this.pres[i], y: e}
+        })
+        this.interpolation = new Lagrange(points);
+        this.sk = this.interpolation.evaluate(new BN(0).toRed(red));
+        this.pk=secp256k1.publicKeyCreate(this.sk.toBuffer())
+        //const interpolatedPublicKey = this.getInterpolatedPublicKey(this.pres, this.skis)
     }
 
     generatePolynomialKey(polynomial) {
@@ -71,52 +77,53 @@ class SSS {
         return {x: new BN(privKey).toRed(red), y: new BN(publicKey).toRed(red), pre: new BN(x).toRed(red)}
     }
 
-    getInterpolatedPublicKey(xs, ys) {
-        const points = ys.map((e, i) => {
-            return {x: xs[i], y: e}
-        })
-        const lagrange = new Lagrange(points);
-        const sharedPrivKey = lagrange.evaluate(new BN(0).toRed(red));
-        return {sk: sharedPrivKey, pk: secp256k1.publicKeyCreate(sharedPrivKey.toBuffer())}
+    getInterpolatedPublicKey(ys) {
+        const _eval = this.interpolation.evaluateYs(new BN(0).toRed(red), ys);
+       // console.log("shared priv key "+(sharedPrivKey.toString()==new BN(this.polynomialSkis.coeffs[0]).toString()))
+        return {sk: _eval, pk: secp256k1.publicKeyCreate(_eval.toBuffer())}
     }
 
     deal() {
         const _ = [...Array(this.numParticipants).keys()].forEach(e => {
-            const {x, y, pre} = this.generatePolynomialKey(this.polynomialKis);
+            const {x, y, pre} = this.generatePolynomialKey(this.polynomialSkis);
             this.kis.push(x);
             this.Ris.push(y)
-            this.preRis.push(pre)
+            //this.preRis.push(pre)
         })
-        const interpolatedPublicKey = this.getInterpolatedPublicKey(this.preRis, this.kis)
+        const interpolatedPublicKey = this.getInterpolatedPublicKey(this.kis)
+        this.k=interpolatedPublicKey.sk
         this.R = interpolatedPublicKey.pk
+        //console.log("k test is  "+ (this.k.toString()==new BN(this.polynomialSkis.coeffs[0]).toString()))
         //assert(this.R==secp256k1.publicKeyCreate(this.polynomialKis))
     }
 
     thresholdSign(m) {
-        const k=this.polynomialKis.coeffs[0]
-        const R=secp256k1.publicKeyCreate(k)
-        const e = challenge(R, m);
+        const e = challenge(this.R, m);
         const sis = [...Array(this.numParticipants).keys()].map(i => this.sign2(this.skis[i],this.kis[i], e))
 
-        //const sis = [...Array(this.numParticipants).keys()].map((i, e) => this.sign(m, this.skis[i].toBuffer(), this.kis[i].toBuffer(), this.R))
-        const points = this.kis.map((e, i) => {
-            return {x: this.preRis[i], y: e}
-        })
-        const lagrangeKis = new Lagrange(points);
-        const L = new BN(0).toRed(red)
-        this.preRis.forEach((e, i) => L.redIAdd((new BN(sis[i].s)).toRed(red).redMul(lagrangeKis.li(new BN(0).toRed(red), e))));
+        const L3 = new BN(0).toRed(red)
+        const L1 = new BN(0).toRed(red)
+        const L2 = new BN(0).toRed(red)
+        this.pres.forEach((e, i) => L1.redIAdd(this.kis[i].redMul(this.interpolation.li(new BN(0).toRed(red), e))));
+        this.pres.forEach((e, i) => L2.redIAdd(this.skis[i].redMul(this.interpolation.li(new BN(0).toRed(red), e))));
+        this.pres.forEach((e, i) => L3.redIAdd(new BN(sis[i].s).toRed(red).redMul(this.interpolation.li(new BN(0).toRed(red), e))));
 
-        return {e: e, s: arrayify(L.toBuffer())};
+        console.log("L1 check "+(L2.toString()==new BN(this.polynomialSkis.coeffs[0]).toString()))
+        const sig=L1.redAdd(L2.redMul(new BN(e).toRed(red)))
+        console.log("sig check  "+(sig.toString()==L3.toString()))
+
+        return {e: e, s: arrayify(sig.toBuffer())};
     }
 
     thresholdSignTest(m) {
         // e = h(address(R) || m)
-        const k=this.polynomialKis.coeffs[0]
+        const k=Buffer.from(this.polynomialSkis.coeffs[0])
+        const sk=Buffer.from(this.polynomialSkis.coeffs[0])
         const R=secp256k1.publicKeyCreate(k)
         const e = challenge(R, m);
 
         // xe = x * e
-        const xe = secp256k1.privateKeyTweakMul(this.polynomialSkis.coeffs[0], e);
+        const xe = secp256k1.privateKeyTweakMul(sk, e);
 
         // s = k + xe
         const s = secp256k1.privateKeyTweakAdd(k, xe);
@@ -130,18 +137,6 @@ class SSS {
         // s = k + xe
         const s = secp256k1.privateKeyTweakAdd(k.toBuffer(), xe);
         return {s, e};
-    }
-    sign(m, x, k, R) {
-
-        // e = h(address(R) || m)
-        const e = challenge(R, m);
-
-        // xe = x * e
-        const xe = secp256k1.privateKeyTweakMul(x, e);
-
-        // s = k + xe
-        const s = secp256k1.privateKeyTweakAdd(k, xe);
-        return {R, s, e};
     }
 
     testInterpolation() {
@@ -191,10 +186,14 @@ class Lagrange {
         xs.forEach((e, i) => L.redIAdd(ys[i].redMul(this.li(x, e))));
         return L;
     }
+
+    evaluateYs(x,ys) {
+        const {xs} = this;
+        const L = new BN(0).toRed(red)
+        xs.forEach((e, i) => L.redIAdd(ys[i].redMul(this.li(x, e))));
+        return L;
+    }
 }
-
-
-
 
 function challenge(R, m) {
     // convert R to address
@@ -222,23 +221,21 @@ describe("Schnorr", function () {
         //testPo.evaluate(0)
 
         const sss = new SSS(participantsNb, threshold)
+        console.log("22shared priv key "+(sss.sk.toString()==new BN(sss.polynomialSkis.coeffs[0]).toString()))
 
         sss.deal();
+        console.log("333shared priv key "+(sss.sk.toString()==new BN(sss.polynomialSkis.coeffs[0]).toString()))
+
         const m = randomBytes(32);
-        const sig = sss.thresholdSignTest(m)
+        //const sig1 = sss.thresholdSignTest(m)
+        //console.log(new BN(sig1.s))
+
+        const sig = sss.thresholdSign(m)
 
 
-        //const {coeffs, kis, kisBytes, Ris, R} = deal(participantsNb, threshold);
+        console.log("444shared priv key "+(sss.sk.toString()==new BN(sss.polynomialSkis.coeffs[0]).toString()))
 
-
-        // message
-        //const e = challenge(R, m);
-        //const sis = [...Array(threshold).keys()].map((i, e) => sign(m, keys[i][0], kis[i], R))
-
-        //const polynomialS = new Lagrange(sis);
-        //const sig = polynomialS.evaluate(0);
-
-        const publicKey = secp256k1.publicKeyCreate(sss.polynomialSkis.coeffs[0])
+        const publicKey = sss.pk
         let gas = await schnorr.estimateGas.verify2(
             publicKey[0] - 2 + 27,
             publicKey.slice(1, 33),
