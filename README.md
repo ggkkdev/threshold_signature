@@ -1,4 +1,5 @@
-# Optimized Schnorr verification contract
+# Optimized Schnorr verification contract for SSS threshold signature 
+### Added threshold option for schnorr signature verification, compared to the original repo
 
 This repo contains a contract `Schnorr.sol` which verifies a Schnorr signature using only `ecrecover` and `keccak256`. 
 

@@ -172,7 +172,6 @@ function challenge(R, m) {
     const e = arrayify(ethers.utils.solidityKeccak256(
         ["address", "bytes32"],
         [R_addr, m]));
-
     return e;
 }
 
