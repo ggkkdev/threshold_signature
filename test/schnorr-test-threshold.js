@@ -73,20 +73,14 @@ class SSS {
         return {x: new BN(privKey).toRed(red), y: new BN(publicKey).toRed(red), pre: new BN(x).toRed(red)}
     }
 
-    getInterpolatedPublicKey(ys) {
-        const _eval = this.interpolation.evaluateYs(new BN(0).toRed(red), ys);
-        return {sk: _eval, pk: secp256k1.publicKeyCreate(_eval.toBuffer())}
-    }
-
-    deal() {
+    deal(signers) {
         const _ = [...Array(this.numParticipants).keys()].forEach(e => {
             const {x, y, pre} = this.generatePolynomialKey(this.polynomialSkis);
             this.kis.push(x);
             this.Ris.push(y)
         })
-        const interpolatedPublicKey = this.getInterpolatedPublicKey(this.kis)
-        this.k = interpolatedPublicKey.sk
-        this.R = interpolatedPublicKey.pk
+        this.k = this.interpolation.evaluateYsIndexed(new BN(0).toRed(red), this.kis, signers);
+        this.R = secp256k1.publicKeyCreate(this.k.toBuffer())
     }
 }
 
@@ -94,17 +88,17 @@ class ThresholdSignature {
     constructor(numParticipants, threshold) {
         this.sss = new SSS(numParticipants, threshold)
         this.numParticipants = numParticipants
-        this.sss.deal();
     }
 
-    thresholdSign(m) {
-        const e = challenge(this.sss.R, m);
+    thresholdSign(m, signers) {
+        this.sss.deal(signers);
+        const e = this.challenge(this.sss.R, m);
         const sis = [...Array(this.numParticipants).keys()].map(i => {
             const signature = this.sign(this.sss.skis[i], this.sss.kis[i], e)
             return new BN(signature.s).toRed(red)
         })
-        const sig=this.sss.getInterpolatedPublicKey(sis)
-        return {e: e, s: arrayify(sig.sk.toBuffer())};
+        const sig = this.sss.interpolation.evaluateYsIndexed(new BN(0).toRed(red), sis, signers);
+        return {e: e, s: arrayify(sig.toBuffer())};
     }
 
     sign(x, k, e) {
@@ -114,6 +108,20 @@ class ThresholdSignature {
         const s = secp256k1.privateKeyTweakAdd(k.toBuffer(), xe);
         return {s, e};
     }
+
+    challenge(R, m) {
+        // convert R to address
+        // see https://github.com/ethereum/go-ethereum/blob/eb948962704397bb861fd4c0591b5056456edd4d/crypto/crypto.go#L275
+        const R_uncomp = secp256k1.publicKeyConvert(R, false);
+        const R_addr = arrayify(ethers.utils.keccak256(R_uncomp.slice(1, 65))).slice(12, 32);
+
+        // e = keccak256(address(R) || m)
+        const e = arrayify(ethers.utils.solidityKeccak256(
+            ["address", "bytes32"],
+            [R_addr, m]));
+        return e;
+    }
+
 }
 
 
@@ -138,10 +146,14 @@ class Lagrange {
         }
     }
 
-    li(x, xi) {
+    liIndexed(x, xi, indexes) {
         const _li = new BN(1).toRed(red);
-        this.xs.filter(e => e != xi).forEach(xm => _li.redIMul(x.redSub(xm).redMul(xi.redSub(xm).redInvm())));
+        indexes.filter(e => this.xs[e] != xi).forEach(e => _li.redIMul(x.redSub(this.xs[e]).redMul(xi.redSub(this.xs[e]).redInvm())))
         return _li;
+    }
+
+    li(x, xi) {
+        return this.liIndexed(x, xi, [...Array(this.xs.length).keys()])
     }
 
     /**
@@ -154,25 +166,16 @@ class Lagrange {
         return L;
     }
 
-    evaluateYs(x, ys) {
+    evaluateYsIndexed(x, ys, indexes) {
         const {xs} = this;
         const L = new BN(0).toRed(red)
-        xs.forEach((e, i) => L.redIAdd(ys[i].redMul(this.li(x, e))));
+        indexes.forEach(e => L.redIAdd(ys[e].redMul(this.liIndexed(x, xs[e], indexes))));
         return L;
     }
-}
 
-function challenge(R, m) {
-    // convert R to address
-    // see https://github.com/ethereum/go-ethereum/blob/eb948962704397bb861fd4c0591b5056456edd4d/crypto/crypto.go#L275
-    const R_uncomp = secp256k1.publicKeyConvert(R, false);
-    const R_addr = arrayify(ethers.utils.keccak256(R_uncomp.slice(1, 65))).slice(12, 32);
-
-    // e = keccak256(address(R) || m)
-    const e = arrayify(ethers.utils.solidityKeccak256(
-        ["address", "bytes32"],
-        [R_addr, m]));
-    return e;
+    evaluateYs(x, ys) {
+        return this.evaluateYsIndexed(x, ys, [...Array(this.xs.length).keys()])
+    }
 }
 
 
@@ -185,7 +188,8 @@ describe("Schnorr", function () {
         const threshold = 2;
         const thresholdSignature = new ThresholdSignature(participantsNb, threshold)
         const m = randomBytes(32);
-        const sig = thresholdSignature.thresholdSign(m)
+        const signers = [2, 4]
+        const sig = thresholdSignature.thresholdSign(m, signers)
         const publicKey = thresholdSignature.sss.pk
 
         let gas = await schnorr.estimateGas.verify(
