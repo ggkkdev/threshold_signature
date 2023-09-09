@@ -39,24 +39,15 @@ class SSS {
     constructor(numParticipants, threshold) {
         this.numParticipants = numParticipants
         this.polynomialSkis = [...Array(numParticipants).keys()].map(e => Polynomial.random(threshold));
-        this.interpolation = null
-        this.skis = []
         this.pkis = []
-        this.pres = []
         this.kis = []
-        this.Ris = []
         this.R = []
         this.k = []
-        this.skis = this.polynomialSkis.map(pol => pol.evaluate(0).toBuffer())
+        //this.skis = this.polynomialSkis.map(pol => pol.evaluate(0).toBuffer())
         const xs=[...Array(numParticipants).keys()].map(i=>i+1)
         this.shares = this.generateHxs(xs, this.polynomialSkis)
         this.pkis = this.polynomialSkis.map(pol => secp256k1.publicKeyCreate(pol.evaluate(0).toBuffer()))
-        //let skis=this.polynomialSkis.map(pol=>pol.evaluate(0).toBuffer())
-        let skverif = new BN(0).toRed(red)
-        this.polynomialSkis.forEach(pol => skverif.redIAdd(pol.evaluate(0)))
         this.pk = secp256k1.publicKeyCombine(this.pkis)
-        //this.skis=keys.skis
-        //this.pkis=keys.pkis
     }
 
     hx(x, polynomials) {
@@ -70,15 +61,7 @@ class SSS {
     generateHxs(xs, polynomials) {
         return  xs.map(e => this.hx(e, polynomials))
     }
-
-    checkpk(signers){
-        const x=signers.map(i=>new BN(i+1).toRed(red))
-        const y = signers.map(i=>this.shares[i])
-        const lagrange=new Lagrange(x, y)
-        const pk=lagrange.evaluate(new BN(0).toRed(red))
-    }
     deal(signers) {
-        this.checkpk(signers);
         const xs=signers.map(_=>randomBytes(32))
         const kis=  this.generateHxs(xs, signers.map(i=>this.polynomialSkis[i]))
         const lagrange=new Lagrange(signers.map(i=>new BN(i+1).toRed(red)), kis)
@@ -144,12 +127,6 @@ class Lagrange {
         this.ys=ys
     }
 
-    liIndexed(x, xi, indexes) {
-        const _li = new BN(1).toRed(red);
-        indexes.filter(e => this.xs[e] != xi).forEach(e => _li.redIMul(x.redSub(this.xs[e]).redMul(xi.redSub(this.xs[e]).redInvm())))
-        return _li;
-    }
-
     li(x, xi) {
         const _li = new BN(1).toRed(red);
         this.xs.filter(e => e != xi).forEach(e => _li.redIMul(x.redSub(e).redMul(xi.redSub(e).redInvm())))
@@ -166,16 +143,6 @@ class Lagrange {
         return L;
     }
 
-    evaluateYsIndexed(x, ys, indexes) {
-        const {xs} = this;
-        const L = new BN(0).toRed(red)
-        indexes.forEach(e => L.redIAdd(ys[e].redMul(this.liIndexed(x, xs[e], indexes))));
-        return L;
-    }
-
-    evaluateYs(x, ys) {
-        return this.evaluateYsIndexed(x, ys, [...Array(this.xs.length).keys()])
-    }
 }
 
 
