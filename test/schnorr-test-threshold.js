@@ -38,7 +38,7 @@ class Polynomial {
 class SSS {
     constructor(numParticipants, threshold) {
         this.numParticipants = numParticipants
-        this.polynomialSkis = Polynomial.random(threshold);
+        this.polynomialSkis = [...Array(numParticipants).keys()].map(e => Polynomial.random(threshold));
         this.interpolation = null
         this.skis = []
         this.pkis = []
@@ -47,40 +47,44 @@ class SSS {
         this.Ris = []
         this.R = []
         this.k = []
-
-        const _ = [...Array(numParticipants).keys()].forEach(e => {
-            const {x, y, pre} = this.generatePolynomialKey(this.polynomialSkis);
-            this.skis.push(x);
-            this.pkis.push(y)
-            this.pres.push(pre)
-        })
-        const points = this.skis.map((e, i) => {
-            return {x: this.pres[i], y: e}
-        })
-        this.interpolation = new Lagrange(points);
-        this.sk = this.interpolation.evaluate(new BN(0).toRed(red));
-        this.pk = secp256k1.publicKeyCreate(this.sk.toBuffer())
+        this.skis = this.polynomialSkis.map(pol => pol.evaluate(0).toBuffer())
+        const xs=[...Array(numParticipants).keys()].map(i=>i+1)
+        this.shares = this.generateHxs(xs, this.polynomialSkis)
+        this.pkis = this.polynomialSkis.map(pol => secp256k1.publicKeyCreate(pol.evaluate(0).toBuffer()))
+        //let skis=this.polynomialSkis.map(pol=>pol.evaluate(0).toBuffer())
+        let skverif = new BN(0).toRed(red)
+        this.polynomialSkis.forEach(pol => skverif.redIAdd(pol.evaluate(0)))
+        this.pk = secp256k1.publicKeyCombine(this.pkis)
+        //this.skis=keys.skis
+        //this.pkis=keys.pkis
     }
 
-    generatePolynomialKey(polynomial) {
-        let privKey
-        let x
-        do {
-            x = randomBytes(32)
-            privKey = polynomial.evaluate(x).toBuffer();
-        } while (!secp256k1.privateKeyVerify(privKey))
-        const publicKey = secp256k1.publicKeyCreate(privKey);
-        return {x: new BN(privKey).toRed(red), y: new BN(publicKey).toRed(red), pre: new BN(x).toRed(red)}
+    hx(x, polynomials) {
+        let hx = new BN(0).toRed(red)
+        polynomials.forEach(poli => {
+            hx.redIAdd(poli.evaluate(x))
+        })
+        return hx;
     }
 
+    generateHxs(xs, polynomials) {
+        return  xs.map(e => this.hx(e, polynomials))
+    }
+
+    checkpk(signers){
+        const x=signers.map(i=>new BN(i+1).toRed(red))
+        const y = signers.map(i=>this.shares[i])
+        const lagrange=new Lagrange(x, y)
+        const pk=lagrange.evaluate(new BN(0).toRed(red))
+    }
     deal(signers) {
-        const _ = [...Array(this.numParticipants).keys()].forEach(e => {
-            const {x, y, pre} = this.generatePolynomialKey(this.polynomialSkis);
-            this.kis.push(x);
-            this.Ris.push(y)
-        })
-        this.k = this.interpolation.evaluateYsIndexed(new BN(0).toRed(red), this.kis, signers);
+        this.checkpk(signers);
+        const xs=signers.map(_=>randomBytes(32))
+        const kis=  this.generateHxs(xs, signers.map(i=>this.polynomialSkis[i]))
+        const lagrange=new Lagrange(signers.map(i=>new BN(i+1).toRed(red)), kis)
+        this.k=lagrange.evaluate(new BN(0).toRed(red))
         this.R = secp256k1.publicKeyCreate(this.k.toBuffer())
+        this.kis=kis
     }
 }
 
@@ -93,11 +97,12 @@ class ThresholdSignature {
     thresholdSign(m, signers) {
         this.sss.deal(signers);
         const e = this.challenge(this.sss.R, m);
-        const sis = [...Array(this.numParticipants).keys()].map(i => {
-            const signature = this.sign(this.sss.skis[i], this.sss.kis[i], e)
+        const sis = signers.map((el,i) => {
+            const signature = this.sign(this.sss.shares[el], this.sss.kis[i], e)
             return new BN(signature.s).toRed(red)
         })
-        const sig = this.sss.interpolation.evaluateYsIndexed(new BN(0).toRed(red), sis, signers);
+        const lagrange=new Lagrange(signers.map(i=>new BN(i+1).toRed(red)), sis)
+        const sig=lagrange.evaluate(new BN(0).toRed(red))
         return {e: e, s: arrayify(sig.toBuffer())};
     }
 
@@ -134,16 +139,9 @@ class ThresholdSignature {
  * console.log(polynomial.evaluate(0.1));
  */
 class Lagrange {
-    constructor(points) {
-        const xs = (this.xs = []);
-        const ys = (this.ys = []);
-        if (points && points.length) {
-            this.k = points.length;
-            points.forEach(({x, y}) => {
-                xs.push(x);
-                ys.push(y);
-            });
-        }
+    constructor(xs, ys) {
+        this.xs=xs
+        this.ys=ys
     }
 
     liIndexed(x, xi, indexes) {
@@ -153,7 +151,9 @@ class Lagrange {
     }
 
     li(x, xi) {
-        return this.liIndexed(x, xi, [...Array(this.xs.length).keys()])
+        const _li = new BN(1).toRed(red);
+        this.xs.filter(e => e != xi).forEach(e => _li.redIMul(x.redSub(e).redMul(xi.redSub(e).redInvm())))
+        return _li;
     }
 
     /**
