@@ -163,7 +163,7 @@ class ThresholdSignature {
             const si = this.sign(m, this.sss.shares[el], this.sss.kis[i], this.sss.r, this.sss.sigmais[i])
             return s.redIAdd(si);
         })
-        return {s: arrayify(s.toBuffer())};
+        return {r:"0x"+Buffer.from(this.sss.r).toString("hex"),v:this.sss.R[0] - 2 + 27, s: "0x"+s.toBuffer().toString("hex"),recoveryParam: this.sss.R[0]-2};
     }
 
     sign(m, sharei, ki, r, sigmai) {
@@ -184,6 +184,15 @@ describe("ECDSA", function () {
         const signers = [2, 4]
         const sig = thresholdSignature.thresholdSign(m, signers)
         const publicKey = thresholdSignature.sss.pk
-        console.log("signature: " +sig.toString())
+        console.log("signature: " +sig.s.toString())
+        const [owner, addr1] = await ethers.getSigners();
+        const sign=await owner.signMessage(m)
+        const recoveredAddress=await ethers.utils.verifyMessage(m, sign);
+        console.log(recoveredAddress==owner.address)
+        const signature= ethers.utils.joinSignature(sig)
+        let verified = await ethers.utils.verifyMessage(m, signature);
+        expect(verified).to.equal("0x"+Buffer.from(publicKey).toString("hex"))
+
+
     });
 });
