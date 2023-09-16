@@ -5,6 +5,7 @@ const paillierBigint = require('paillier-bigint')
 const {randomBytes, randomInt} = require('crypto')
 const secp256k1 = require('secp256k1')
 const {bufToBigint, bigintToBuf} = require("bigint-conversion");
+const {recoverPublicKey, arrayify, hashMessage} = require("ethers/lib/utils");
 
 const EC = require('elliptic').ec
 
@@ -16,6 +17,8 @@ const ecparams = ec.curve
 // See https://github.com/indutny/elliptic/issues/191#issuecomment-569888758
 const BN = ecparams.n.constructor
 const red = BN.red(ec.n);
+let dd = {}
+let cc = {}
 
 class Polynomial {
     constructor(_coeffs = []) {
@@ -99,17 +102,18 @@ class SSS {
         return xs.map(e => this.hx(e, polynomials))
     }
 
-    shareConversion(val1, val2, key1) {
+    shareConversion(_val1, _val2, key1) {
+        let val1=_val1.clone();
+        let val2=_val2.clone()
         const c1 = key1.publicKey.encrypt(bufToBigint(val1.toBuffer()));
-
         const betaPrime = bufToBigint(randomBytes(32))
         const c2 = key1.publicKey.addition(key1.publicKey.multiply(c1, bufToBigint(val2.toBuffer())), key1.publicKey.encrypt(betaPrime));
         const alpha = new BN(key1.privateKey.decrypt(c2)).toRed(red)
         const beta = new BN(ec.n).add(new BN(betaPrime).toRed(red).neg()).toRed(red)
+        console.log("verifShare")
         console.log(val1.redMul(val2).toString() == alpha.redAdd(beta).toString())
         return {
-            additiveShare1: alpha,
-            additiveShare2: beta
+            additiveShare1: alpha, additiveShare2: beta
         }
     }
 
@@ -118,66 +122,58 @@ class SSS {
         this.k = this.kis.reduce((acc, e) => acc.redAdd(e))
         const gammais = signers.map(_ => new BN(randomBytes(32)).toRed(red))
         this.gamma = gammais.reduce((acc, e) => acc.redAdd(e))
-        const checkkgamma = this.k.redMul(this.gamma)
         const lagrange = new Lagrange(signers.map(i => new BN(i + 1).toRed(red)), signers.map(i => this.shares[i]))
-        console.log(lagrange.evaluate(new BN(0).toRed(red)).toString() == this.x.toString())
+        //console.log(lagrange.evaluate(new BN(0).toRed(red)).toString() == this.x.toString())
         const wis = signers.map(e => this.shares[e].redMul(lagrange.li(new BN(0).toRed(red), new BN(e + 1).toRed(red))))
-        console.log(wis.reduce((acc, e) => acc.redAdd(e)).toString() == this.x.toString())
+        //console.log(wis.reduce((acc, e) => acc.redAdd(e)).toString() == this.x.toString())
         const pailliers = signers.map(e => this.pailliers[e])
-        let conversionsDeltais = new Array(signers.length).fill(new Array(signers.length).fill(0))
-        let conversionsSigmais = new Array(signers.length).fill(new Array(signers.length).fill(0))
+        let conversionsDeltais = [...Array(signers.length)].map(_=>Array(signers.length).fill(0))
+        let conversionsSigmais = [...Array(signers.length)].map(_=>Array(signers.length).fill(0))
         const checkkgamma2 = new BN(0).toRed(red)
-        const checkkgamma3 = new BN(0).toRed(red)
+        const checksigma = new BN(0).toRed(red)
         signers.forEach((i, indi) => {
             console.log("player " + i)
             signers.forEach((j, indj) => {
-                    console.log("a" + indi + "," + indj)
-                    console.log("b" + indi + "," + indj)
-                    conversionsDeltais[indi][indj] = this.shareConversion(this.kis[indi], gammais[indj], pailliers[indi])
-                    checkkgamma2.redIAdd(this.kis[indi].redMul(gammais[indj]))
-                    checkkgamma3.redIAdd(conversionsDeltais[indi][indj].additiveShare1.redAdd(conversionsDeltais[indi][indj].additiveShare2))
-                    //console.log(conversionsDeltais[indi][indj].additiveShare1.redAdd(conversionsDeltais[indi][indj].additiveShare2).toString() == this.kis[indi].redMul(gammais[indj]).toString())
-                    conversionsSigmais[indi][indj] = this.shareConversion(this.kis[indi], wis[indj], pailliers[indi])
-                }
-            )
-            //console.log("original "+it)
+                conversionsDeltais[indi][indj] = this.shareConversion(this.kis[indi], gammais[indj], pailliers[indi])
+                conversionsSigmais[indi][indj] = this.shareConversion(this.kis[indi], wis[indj], pailliers[indi])
+                checkkgamma2.redIAdd(this.kis[indi].redMul(gammais[indj]))
+                checksigma.redIAdd(this.kis[indi].redMul(wis[indj]))
+            })
         })
-
         const deltais = this.multiplicativeToAdditiveProtocol(signers, this.kis, gammais, conversionsDeltais)
-        console.log(checkkgamma2.toString() == checkkgamma.toString())
-        console.log(checkkgamma3.toString() == checkkgamma.toString())
-        const debugkg=deltais.reduce((acc, e) => acc.redAdd(e))
-        console.log(debugkg.toString() == checkkgamma.toString())
         this.sigmais = this.multiplicativeToAdditiveProtocol(signers, this.kis, wis, conversionsSigmais)
 
-        const delta = new BN(0).toRed(red);
-        deltais.forEach(e => delta.redIAdd(e))
-        const Gammais = signers.map((i, indi) => secp256k1.publicKeyCreate(gammais[indi].toBuffer()))
-        const Gamma = secp256k1.publicKeyCombine(Gammais)
-        const DeltaMin = secp256k1.publicKeyCreate(delta.redInvm().toBuffer())
-        this.R = secp256k1.publicKeyCombine([DeltaMin, Gamma])
-        this.r = this.R.slice(1, 33)
+        const delta = deltais.reduce((acc, e) => acc.redAdd(e))
+        const sigma = this.sigmais.reduce((acc, e) => acc.redAdd(e))
 
+        console.log("Check k*gamma "+(delta.toString() == checkkgamma2.toString()))
+        console.log("Check k*x "+(sigma.toString() == checksigma.toString()))
+
+        //console.log(this.sigmais.reduce((acc, e) => acc.redAdd(e)).toString()==this.gamma.redMul(this.k))
+        const Gammais = gammais.map(e => secp256k1.publicKeyCreate(e.toBuffer()))
+        const Gamma = secp256k1.publicKeyCombine(Gammais)
+        console.log("Check Gamma is Prod Gamma "+(new BN(secp256k1.publicKeyCreate(this.gamma.toBuffer())).toString()==new BN(Gamma).toString()))
+        console.log("Check gamma*deltaMin==kMin "+(this.gamma.redMul(delta.redInvm()).toString()==this.k.redInvm().toString()))
+        const DeltaMin = secp256k1.publicKeyCreate(delta.redInvm().toBuffer())
+        console.log("Check kmin*gammamin=deltamin "+(delta.redInvm().toString()==this.k.redInvm().redMul(this.gamma.redInvm()).toString()))
+        const R = secp256k1.publicKeyCombine([DeltaMin, Gamma])
+        this.R=secp256k1.publicKeyCreate(this.k.redInvm().toBuffer())
+
+        console.log("Check same but G "+(new BN(secp256k1.publicKeyCreate(this.k.redInvm().toBuffer())).toString()==new BN(this.R).toString()))
+        console.log("Check R is Kmin "+(new BN(this.R).toString()==new BN(secp256k1.publicKeyCreate(this.k.redInvm().toBuffer())).toString()))
+        this.r = this.R.slice(1, 33)
     }
 
     multiplicativeToAdditiveProtocol(signers, firstTerms, secondTerms, conversions) {
-        return signers.map(i=> {
+        return signers.map(i => {
             let filterSum = new BN(0).toRed(red);
-            console.log("debug player " + i)
             signers.filter(j => j != i).forEach(j => {
-                console.log("a" + signers.indexOf(i) + "," + signers.indexOf(j))
-                console.log("b" + signers.indexOf(j) + "," + signers.indexOf(i))
-                const share1 = conversions[signers.indexOf(i)][signers.indexOf(j)].additiveShare1
-                const share2 = conversions[signers.indexOf(j)][signers.indexOf(i)].additiveShare2
+                const share1 = conversions[signers.indexOf(i)][signers.indexOf(j)].additiveShare1.clone()
+                const share2 = conversions[signers.indexOf(j)][signers.indexOf(i)].additiveShare2.clone()
                 filterSum.redIAdd(share1.redAdd(share2))
             })
-            //console.log("debug "+it)
-            console.log("a" + signers.indexOf(i) + "," + signers.indexOf(i))
-            console.log("b" + signers.indexOf(i) + "," + signers.indexOf(i))
-            const d=firstTerms[signers.indexOf(i)].redMul(secondTerms[signers.indexOf(i)])
-            const d2=conversions[signers.indexOf(i)][signers.indexOf(i)].additiveShare1.redAdd(conversions[signers.indexOf(i)][signers.indexOf(i)].additiveShare2)
-            console.log(d.toString()==d2.toString())
-            return filterSum.redAdd(d2)
+            const d = firstTerms[signers.indexOf(i)].redMul(secondTerms[signers.indexOf(i)])
+            return filterSum.redAdd(d)
         })
     }
 }
@@ -194,20 +190,18 @@ class ThresholdSignature {
 
     thresholdSign(m, signers) {
         this.sss.deal(signers);
-        const s = new BN(0).toRed(red)
-        signers.forEach((el, i) => {
-            const si = this.sign(m, this.sss.shares[el], this.sss.kis[i], this.sss.r, this.sss.sigmais[i])
-            return s.redIAdd(si);
-        })
+        const sis=signers.map((el, i) => this.sign(m, this.sss.kis[i], this.sss.r, this.sss.sigmais[i]))
+        const s =sis.reduce((acc,e)=> acc.redAdd(e));
+        console.log("Check s=k(m+rx) "+(new BN(m).toRed(red).redAdd(new BN(this.sss.r).toRed(red).redMul(this.sss.x)).redMul(this.sss.k).toString()==s.toString()))
         return {
             r: "0x" + Buffer.from(this.sss.r).toString("hex"),
             v: this.sss.R[0] - 2 + 27,
-            s: "0x" + s.toBuffer().toString("hex"),
+            s: "0x" + s.toString("hex"),
             recoveryParam: this.sss.R[0] - 2
         };
     }
 
-    sign(m, sharei, ki, r, sigmai) {
+    sign(m, ki, r, sigmai) {
         return (new BN(m).toRed(red)).redMul(ki).redAdd(new BN(r).toRed(red).redMul(sigmai))
     }
 }
@@ -227,13 +221,15 @@ describe("ECDSA", function () {
         const publicKey = thresholdSignature.sss.pk
         console.log("signature: " + sig.s.toString())
         //const [owner, addr1] = await ethers.getSigners();
-        //const sign = await owner.signMessage(m)
-        //const recoveredAddress = await ethers.utils.verifyMessage(m, sign);
-        //console.log(recoveredAddress == owner.address)
+        const owner=new ethers.Wallet(thresholdSignature.sss.x.toBuffer(), ethers.getDefaultProvider());
+        const sign = await owner.signMessage(m)
+        const recoveredAddress = await ethers.utils.verifyMessage(m, sign);
+        console.log(recoveredAddress == owner.address)
         const signature = ethers.utils.joinSignature(sig)
-        let verified = await ethers.utils.verifyMessage(m, signature);
+        let verified = await ethers.utils.recoverAddress(m, signature);
+        //let pubKey = recoverPublicKey(arrayify(hashMessage(arrayify(m))), sign);
         const pk = "0x" + Buffer.from(publicKey).toString("hex")
-        expect(verified).to.equal(pk)
+        expect(verified).to.equal(owner.address)
 
 
     });
