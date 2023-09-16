@@ -156,9 +156,7 @@ class SSS {
         console.log("Check gamma*deltaMin==kMin "+(this.gamma.redMul(delta.redInvm()).toString()==this.k.redInvm().toString()))
         const DeltaMin = secp256k1.publicKeyCreate(delta.redInvm().toBuffer())
         console.log("Check kmin*gammamin=deltamin "+(delta.redInvm().toString()==this.k.redInvm().redMul(this.gamma.redInvm()).toString()))
-        const R = secp256k1.publicKeyCombine([DeltaMin, Gamma])
-        this.R=secp256k1.publicKeyCreate(this.k.redInvm().toBuffer())
-        //TODO check why combine here dont work
+        this.R = secp256k1.publicKeyTweakMul(Gamma, delta.redInvm().toBuffer())
         console.log("Check same but G "+(new BN(secp256k1.publicKeyCreate(this.k.redInvm().toBuffer())).toString()==new BN(this.R).toString()))
         console.log("Check R is Kmin "+(new BN(this.R).toString()==new BN(secp256k1.publicKeyCreate(this.k.redInvm().toBuffer())).toString()))
         this.r = this.R.slice(1, 33)
