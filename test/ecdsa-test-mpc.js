@@ -157,6 +157,7 @@ class SSS {
         const DeltaMin = secp256k1.publicKeyCreate(delta.redInvm().toBuffer())
         console.log("Check kmin*gammamin=deltamin "+(delta.redInvm().toString()==this.k.redInvm().redMul(this.gamma.redInvm()).toString()))
         this.R = secp256k1.publicKeyTweakMul(Gamma, delta.redInvm().toBuffer())
+        console.log("Check R=G*kmin "+(this.R.toString()==secp256k1.publicKeyCreate(this.k.redInvm().toBuffer()).toString()))
         console.log("Check same but G "+(new BN(secp256k1.publicKeyCreate(this.k.redInvm().toBuffer())).toString()==new BN(this.R).toString()))
         console.log("Check R is Kmin "+(new BN(this.R).toString()==new BN(secp256k1.publicKeyCreate(this.k.redInvm().toBuffer())).toString()))
         this.r = this.R.slice(1, 33)
