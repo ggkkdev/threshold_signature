@@ -5,7 +5,6 @@ const paillierBigint = require('paillier-bigint')
 const {randomBytes, randomInt} = require('crypto')
 const secp256k1 = require('secp256k1')
 const {bufToBigint, bigintToBuf} = require("bigint-conversion");
-const {recoverPublicKey, arrayify, hashMessage} = require("ethers/lib/utils");
 
 const EC = require('elliptic').ec
 
@@ -17,8 +16,6 @@ const ecparams = ec.curve
 // See https://github.com/indutny/elliptic/issues/191#issuecomment-569888758
 const BN = ecparams.n.constructor
 const red = BN.red(ec.n);
-let dd = {}
-let cc = {}
 
 class Polynomial {
     constructor(_coeffs = []) {
@@ -110,8 +107,7 @@ class SSS {
         const c2 = key1.publicKey.addition(key1.publicKey.multiply(c1, bufToBigint(val2.toBuffer())), key1.publicKey.encrypt(betaPrime));
         const alpha = new BN(key1.privateKey.decrypt(c2)).toRed(red)
         const beta = new BN(ec.n).add(new BN(betaPrime).toRed(red).neg()).toRed(red)
-        console.log("verifShare")
-        console.log(val1.redMul(val2).toString() == alpha.redAdd(beta).toString())
+        console.log("Verif share conversion: "+(val1.redMul(val2).toString() == alpha.redAdd(beta).toString()))
         return {
             additiveShare1: alpha, additiveShare2: beta
         }
@@ -123,20 +119,18 @@ class SSS {
         const gammais = signers.map(_ => new BN(randomBytes(32)).toRed(red))
         this.gamma = gammais.reduce((acc, e) => acc.redAdd(e))
         const lagrange = new Lagrange(signers.map(i => new BN(i + 1).toRed(red)), signers.map(i => this.shares[i]))
-        //console.log(lagrange.evaluate(new BN(0).toRed(red)).toString() == this.x.toString())
         const wis = signers.map(e => this.shares[e].redMul(lagrange.li(new BN(0).toRed(red), new BN(e + 1).toRed(red))))
-        //console.log(wis.reduce((acc, e) => acc.redAdd(e)).toString() == this.x.toString())
         const pailliers = signers.map(e => this.pailliers[e])
         let conversionsDeltais = [...Array(signers.length)].map(_=>Array(signers.length).fill(0))
         let conversionsSigmais = [...Array(signers.length)].map(_=>Array(signers.length).fill(0))
-        const checkkgamma2 = new BN(0).toRed(red)
+        const checkkgamma = new BN(0).toRed(red)
         const checksigma = new BN(0).toRed(red)
         signers.forEach((i, indi) => {
             console.log("player " + i)
             signers.forEach((j, indj) => {
                 conversionsDeltais[indi][indj] = this.shareConversion(this.kis[indi], gammais[indj], pailliers[indi])
                 conversionsSigmais[indi][indj] = this.shareConversion(this.kis[indi], wis[indj], pailliers[indi])
-                checkkgamma2.redIAdd(this.kis[indi].redMul(gammais[indj]))
+                checkkgamma.redIAdd(this.kis[indi].redMul(gammais[indj]))
                 checksigma.redIAdd(this.kis[indi].redMul(wis[indj]))
             })
         })
@@ -146,7 +140,7 @@ class SSS {
         const delta = deltais.reduce((acc, e) => acc.redAdd(e))
         const sigma = this.sigmais.reduce((acc, e) => acc.redAdd(e))
 
-        console.log("Check k*gamma "+(delta.toString() == checkkgamma2.toString()))
+        console.log("Check k*gamma "+(delta.toString() == checkkgamma.toString()))
         console.log("Check k*x "+(sigma.toString() == checksigma.toString()))
 
         //console.log(this.sigmais.reduce((acc, e) => acc.redAdd(e)).toString()==this.gamma.redMul(this.k))
@@ -217,19 +211,12 @@ describe("ECDSA", function () {
         const m = randomBytes(32);
         const signers = [2, 4]
         const sig = thresholdSignature.thresholdSign(m, signers)
-        const publicKey = thresholdSignature.sss.pk
-        console.log("signature: " + sig.s.toString())
-        //const [owner, addr1] = await ethers.getSigners();
         const owner=new ethers.Wallet(thresholdSignature.sss.x.toBuffer(), ethers.getDefaultProvider());
         const sign = await owner.signMessage(m)
         const recoveredAddress = await ethers.utils.verifyMessage(m, sign);
-        console.log(recoveredAddress == owner.address)
+        console.log("Traditional signature on message "+(recoveredAddress == owner.address))
         const signature = ethers.utils.joinSignature(sig)
-        let verified = await ethers.utils.recoverAddress(m, signature);
-        //let pubKey = recoverPublicKey(arrayify(hashMessage(arrayify(m))), sign);
-        const pk = "0x" + Buffer.from(publicKey).toString("hex")
+        let verified = ethers.utils.recoverAddress(m, signature);
         expect(verified).to.equal(owner.address)
-
-
     });
 });
