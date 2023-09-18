@@ -75,20 +75,4 @@ describe("Schnorr", function () {
       sig.s,
     )).to.equal(true);
   });
-
-  it("compare with addition", async function () {
-    const Schnorr = await ethers.getContractFactory("Schnorr");
-    const schnorr = await Schnorr.deploy();
-    const gas=await schnorr.estimateGas.add(4,5);
-    console.log("verify gas cost:", gas);
-    expect(await schnorr.add(4,5)).to.equal(9)
-  })
-  it("compare with mul", async function () {
-    const Schnorr = await ethers.getContractFactory("Schnorr");
-    const schnorr = await Schnorr.deploy();
-    const gas=await schnorr.estimateGas.mult(4,5);
-    console.log("verify gas cost:", gas);
-    expect(await schnorr.mult(4,5)).to.equal(20)
-  })
-
   });
