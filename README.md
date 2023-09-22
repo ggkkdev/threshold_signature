@@ -1,13 +1,10 @@
-# Optimized Schnorr verification contract for SSS threshold signature 
-### Added threshold option for schnorr signature verification, compared to the original repo
+# Threshold signatures
+This repo try to reproduce threshold signatures. 
 
-This repo contains a contract `Schnorr.sol` which verifies a Schnorr signature using only `ecrecover` and `keccak256`. 
+The first one is a threshold schnorr signature. 
+See the hack used to verify the schnorr signature with ecrecover in See https://hackmd.io/@nZ-twauPRISEa6G9zg3XRw/SyjJzSLt9
 
-Total gas cost: `29743`
-
-### How it works
-
-See https://hackmd.io/@nZ-twauPRISEa6G9zg3XRw/SyjJzSLt9
+The second one is a MPC threshold signature based on https://eprint.iacr.org/2019/114.pdf (verif to do)
 
 ### Try it out
 
