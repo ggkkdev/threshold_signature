@@ -17,7 +17,7 @@ describe("Schnorr Threshold", function () {
         const m = randomBytes(32);
         const signers = [2, 4]
         const sig = thresholdSignature.thresholdSign(m, signers)
-        const publicKey = thresholdSignature.sss.pk
+        const publicKey = thresholdSignature.pk
 
         let gas = await schnorr.estimateGas.verify(
             publicKey[0] - 2 + 27,

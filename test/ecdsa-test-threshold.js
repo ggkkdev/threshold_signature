@@ -6,6 +6,7 @@ const secp256k1 = require('secp256k1')
 const {ThresholdECDSA} = require("../algo/ecdsa-mpc");
 const {red, BN} = require("../algo");
 const {Lagrange} = require("../algo/components/lagrange");
+const {SSS} = require("../algo/components/nfeldman-keygen");
 
 
 describe("ECDSA", function () {
@@ -18,8 +19,7 @@ describe("ECDSA", function () {
     before(async function () {
         thresholdSignature = await ThresholdECDSA.build(participantsNb, threshold)
         sig = thresholdSignature.sign(m, signers)
-        sss = thresholdSignature.sss
-        x = sss.skis.reduce((acc, e) => acc.redAdd(e))
+        x = thresholdSignature.skis.reduce((acc, e) => acc.redAdd(e))
         owner = new ethers.Wallet(x.toBuffer(), ethers.getDefaultProvider());
         const ECDSA = await ethers.getContractFactory("ECDSA");
         ecdsa = await ECDSA.deploy();
@@ -27,12 +27,12 @@ describe("ECDSA", function () {
     });
 
     it("Verify SSS: key interpolation ", async function () {
-        const lagrange = new Lagrange(sss.skis.map((_, i) => new BN(i + 1).toRed(red)), sss.skis.map((_, i) => sss.hx(i + 1, sss.polynomialSkis)))
+        const lagrange = new Lagrange(thresholdSignature.skis.map((_, i) => new BN(i + 1).toRed(red)), thresholdSignature.skis.map((_, i) => SSS.hx(i + 1, thresholdSignature.polynomialSkis)))
         const evalx = lagrange.evaluate(new BN(0).toRed(red))
-        const h0 = sss.hx(0, sss.polynomialSkis)
+        const h0 = SSS.hx(0, thresholdSignature.polynomialSkis)
         expect(x.toString()).to.equal(evalx.toString())
         expect(h0.toString() == x.toString())
-        expect(new BN(sss.pk).toRed(red).toString(), new BN(secp256k1.publicKeyCreate(x.toBuffer())).toRed(red).toString())
+        expect(new BN(thresholdSignature.pk).toRed(red).toString(), new BN(secp256k1.publicKeyCreate(x.toBuffer())).toRed(red).toString())
     })
 
     it("Should verify traditional signature with mpc private key", async function () {
@@ -65,15 +65,13 @@ describe("ECDSA", function () {
         const participantsNb = 5;
         const threshold = 2;
         const signers = [2, 4]
-        const m = randomBytes(32);
         let thresholdSignature, sss, x, owner, delta, kis, r, sigmais, R, gammais, Gamma, wis, k, gamma, checkkgamma,
             checksigma, sigma;
         before(async function () {
             thresholdSignature = await ThresholdECDSA.build(participantsNb, threshold)
-            sss = thresholdSignature.sss
-            x = sss.skis.reduce((acc, e) => acc.redAdd(e))
+            x = thresholdSignature.skis.reduce((acc, e) => acc.redAdd(e))
             owner = new ethers.Wallet(x.toBuffer(), ethers.getDefaultProvider());
-            const deal = sss.deal(signers);
+            const deal = thresholdSignature.deal(signers);
             [delta, kis, r, sigmais, R, gammais, Gamma, wis] = [deal.delta, deal.kis, deal.r, deal.sigmais, deal.R, deal.gammais, deal.Gamma, deal.wis]
             k = kis.reduce((acc, e) => acc.redAdd(e))
             gamma = gammais.reduce((acc, e) => acc.redAdd(e))

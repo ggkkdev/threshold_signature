@@ -3,49 +3,43 @@ const paillierBigint = require('paillier-bigint')
 const {randomBytes, randomInt} = require('crypto')
 const secp256k1 = require('secp256k1')
 const {bufToBigint} = require("bigint-conversion");
-const {Polynomial} = require("./components/polynomial");
 const {BN, ec, randomBytesVerified, red} = require("./index");
 const {Lagrange} = require("./components/lagrange");
+const {SSS} = require("./components/nfeldman-keygen");
 
-
-
-class SSS {
+class ThresholdECDSA {
     constructor(numParticipants, threshold, pailliers) {
-        let polynomialSkis, xs, condition;
-        do {
-            polynomialSkis = [...Array(numParticipants).keys()].map(e => Polynomial.random(threshold));
-            xs = [...Array(numParticipants).keys()].map(i => i + 1)
-            let privVerify = polynomialSkis.map(pol => secp256k1.privateKeyVerify(pol.evaluate(0).toBuffer()))
-            condition = privVerify.every(v => v === true);
-        } while (!condition)
-
-        this.polynomialSkis = polynomialSkis;
-        //const xs = [...Array(numParticipants).keys()].map(i => i + 1)
-        this.shares = this.generateHxs(xs, this.polynomialSkis)
-        this.pkis = this.polynomialSkis.map(pol => secp256k1.publicKeyCreate(pol.evaluate(0).toBuffer()))
-        this.skis = this.polynomialSkis.map(pol => pol.evaluate(0))
-        this.pk = secp256k1.publicKeyCombine(this.pkis)
         this.pailliers = pailliers
+        const {pk, skis, pkis, shares, polynomialSkis}=SSS.keygen(numParticipants, threshold)
+        this.pk=pk
+        this.skis=skis
+        this.pkis=pkis
+        this.shares=shares
+        this.polynomialSkis=polynomialSkis
     }
 
-    static async build(numParticipants, threshold) {
+    static async build(numParticipants, threshold ) {
         const pailliers = await Promise.all([...Array(numParticipants).keys()].map(async e => {
             const {publicKey, privateKey} = await paillierBigint.generateRandomKeys(1024)
             return {publicKey, privateKey};
         }));
-        return new SSS(numParticipants, threshold, pailliers);
+        return new ThresholdECDSA(numParticipants, threshold,pailliers);
     }
 
-    hx(x, polynomials) {
-        let hx = new BN(0).toRed(red)
-        polynomials.forEach(poli => {
-            hx.redIAdd(poli.evaluate(x))
-        })
-        return hx;
+    sign(m, signers) {
+        const {kis, r, sigmais, R} = this.deal(signers);
+        const sis = signers.map((el, i) => this.individualSign(m, kis[i], r, sigmais[i]))
+        const s = sis.reduce((acc, e) => acc.redAdd(e));
+        return {
+            r: "0x" + Buffer.from(r).toString("hex"),
+            v: R[0] - 2 + 27,
+            s: "0x" + s.toString("hex"),
+            recoveryParam: R[0] - 2
+        };
     }
 
-    generateHxs(xs, polynomials) {
-        return xs.map(e => this.hx(e, polynomials))
+    individualSign(m, ki, r, sigmai) {
+        return (new BN(m).toRed(red)).redMul(ki).redAdd(new BN(r).toRed(red).redMul(sigmai))
     }
 
     shareConversion(_val1, _val2, key1) {
@@ -101,31 +95,4 @@ class SSS {
     }
 }
 
-class ThresholdECDSA {
-    constructor(sss) {
-        this.sss = sss;
-    }
-
-    static async build(numParticipants, threshold) {
-        const sss = await SSS.build(numParticipants, threshold)
-        return new ThresholdECDSA(sss);
-    }
-
-    sign(m, signers) {
-        const {kis, r, sigmais, R} = this.sss.deal(signers);
-        const sis = signers.map((el, i) => this.individualSign(m, kis[i], r, sigmais[i]))
-        const s = sis.reduce((acc, e) => acc.redAdd(e));
-        return {
-            r: "0x" + Buffer.from(r).toString("hex"),
-            v: R[0] - 2 + 27,
-            s: "0x" + s.toString("hex"),
-            recoveryParam: R[0] - 2
-        };
-    }
-
-    individualSign(m, ki, r, sigmai) {
-        return (new BN(m).toRed(red)).redMul(ki).redAdd(new BN(r).toRed(red).redMul(sigmai))
-    }
-}
-
-module.exports ={ThresholdECDSA, SSS}
+module.exports ={ThresholdECDSA}

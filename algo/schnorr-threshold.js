@@ -6,56 +6,36 @@ const {Polynomial} = require("./components/polynomial");
 const {red, BN} = require("./index");
 const {arrayify} = require("ethers/lib/utils");
 const {Lagrange} = require("./components/lagrange");
+const {SSS} = require("./components/nfeldman-keygen");
 
-class SSS {
-    constructor(numParticipants, threshold) {
-        this.numParticipants = numParticipants
-        this.polynomialSkis = [...Array(numParticipants).keys()].map(e => Polynomial.random(threshold));
-        this.pkis = []
-        this.kis = []
-        this.R = []
-        this.k = []
-        const xs=[...Array(numParticipants).keys()].map(i=>i+1)
-        this.shares = this.generateHxs(xs, this.polynomialSkis)
-        this.pkis = this.polynomialSkis.map(pol => secp256k1.publicKeyCreate(pol.evaluate(0).toBuffer()))
-        this.pk = secp256k1.publicKeyCombine(this.pkis)
-    }
-
-    hx(x, polynomials) {
-        let hx = new BN(0).toRed(red)
-        polynomials.forEach(poli => {
-            hx.redIAdd(poli.evaluate(x))
-        })
-        return hx;
-    }
-
-    generateHxs(xs, polynomials) {
-        return  xs.map(e => this.hx(e, polynomials))
-    }
-    deal(signers) {
-        const xs=signers.map(_=>randomBytes(32))
-        const kis=  this.generateHxs(xs, signers.map(i=>this.polynomialSkis[i]))
-        const lagrange=new Lagrange(signers.map(i=>new BN(i+1).toRed(red)), kis)
-        this.k=lagrange.evaluate(new BN(0).toRed(red))
-        this.R = secp256k1.publicKeyCreate(this.k.toBuffer())
-        this.kis=kis
-    }
-}
 
 class ThresholdSchnorr {
     constructor(numParticipants, threshold) {
-        this.sss = new SSS(numParticipants, threshold)
+        const {pk, skis, pkis, shares, polynomialSkis} = SSS.keygen(numParticipants, threshold)
+        this.polynomialSkis = polynomialSkis
+        this.shares = shares
+        this.pk = pk
     }
 
+    deal(signers, polynomialSkis) {
+        const xs = signers.map(_ => randomBytes(32))
+        const kis = SSS.generateHxs(xs, signers.map(i => polynomialSkis[i]))
+        const lagrange = new Lagrange(signers.map(i => new BN(i + 1).toRed(red)), kis)
+        const k = lagrange.evaluate(new BN(0).toRed(red))
+        const R = secp256k1.publicKeyCreate(k.toBuffer())
+        return {k, R, kis}
+    }
+
+
     thresholdSign(m, signers) {
-        this.sss.deal(signers);
-        const e = this.challenge(this.sss.R, m);
-        const sis = signers.map((el,i) => {
-            const signature = this.sign(this.sss.shares[el], this.sss.kis[i], e)
+        const {R, k, kis} = this.deal(signers, this.polynomialSkis);
+        const e = this.challenge(R, m);
+        const sis = signers.map((el, i) => {
+            const signature = this.sign(this.shares[el], kis[i], e)
             return new BN(signature.s).toRed(red)
         })
-        const lagrange=new Lagrange(signers.map(i=>new BN(i+1).toRed(red)), sis)
-        const sig=lagrange.evaluate(new BN(0).toRed(red))
+        const lagrange = new Lagrange(signers.map(i => new BN(i + 1).toRed(red)), sis)
+        const sig = lagrange.evaluate(new BN(0).toRed(red))
         return {e: e, s: arrayify(sig.toBuffer())};
     }
 
@@ -81,4 +61,4 @@ class ThresholdSchnorr {
     }
 }
 
-module.exports ={ThresholdSchnorr}
+module.exports = {ThresholdSchnorr}
