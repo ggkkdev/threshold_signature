@@ -15,7 +15,7 @@ describe("ECDSA", function () {
     const signers = [2, 4]
     const m = randomBytes(32);
     let sig;
-    let thresholdSignature, sss, x, owner, ecdsa;
+    let thresholdSignature, x, owner, ecdsa;
     before(async function () {
         thresholdSignature = await ThresholdECDSA.build(participantsNb, threshold)
         sig = thresholdSignature.sign(m, signers)
@@ -43,7 +43,7 @@ describe("ECDSA", function () {
     it("Should verify traditional signature  with solidity", async function () {
         const bytes = ethers.utils.arrayify(m);
         const signature = await owner.signMessage(bytes)
-        const sig=ethers.utils.splitSignature(signature)
+        const sig = ethers.utils.splitSignature(signature)
         const messageHash = ethers.utils.hashMessage(bytes);
         expect(await ecdsa.recover(messageHash, sig.v, sig.r, sig.s)).to.equal(owner.address);
     })
@@ -65,7 +65,7 @@ describe("ECDSA", function () {
         const participantsNb = 5;
         const threshold = 2;
         const signers = [2, 4]
-        let thresholdSignature, sss, x, owner, delta, kis, r, sigmais, R, gammais, Gamma, wis, k, gamma, checkkgamma,
+        let thresholdSignature, x, owner, delta, kis, r, sigmais, R, gammais, Gamma, wis, k, gamma, checkkgamma,
             checksigma, sigma;
         before(async function () {
             thresholdSignature = await ThresholdECDSA.build(participantsNb, threshold)
@@ -76,7 +76,6 @@ describe("ECDSA", function () {
             k = kis.reduce((acc, e) => acc.redAdd(e))
             gamma = gammais.reduce((acc, e) => acc.redAdd(e))
             checkkgamma = signers.reduce((accK, _, i) => accK.redAdd(signers.reduce((accG, _, j) => accG.redAdd(kis[i].redMul(gammais[j])), new BN(0).toRed(red))), new BN(0).toRed(red))
-            //const checkkgamma2 = kis.reduce((accK, ki) => accK.redAdd(gammais.reduce((accG, gj) => accG.redAdd(ki.redMul(gj)))))
             checksigma = signers.reduce((accK, _, i) => accK.redAdd(signers.reduce((accG, _, j) => accG.redAdd(kis[i].redMul(wis[j])), new BN(0).toRed(red))), new BN(0).toRed(red))
             sigma = sigmais.reduce((acc, e) => acc.redAdd(e))
         });
@@ -106,7 +105,6 @@ describe("ECDSA", function () {
         it("Check R is Kmin", async function () {
             expect(new BN(R).toString()).to.equal(new BN(secp256k1.publicKeyCreate(k.redInvm().toBuffer())).toString())
         })
-        //console.log("Check s=k(m+rx) "+(new BN(m).toRed(red).redAdd(new BN(r).toRed(red).redMul(x)).redMul(k).toString()==s.toString()))
     })
 
 });

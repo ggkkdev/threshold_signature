@@ -2,7 +2,6 @@ const {expect} = require("chai");
 const {ethers} = require("hardhat");
 
 const {randomBytes, randomInt} = require('crypto')
-const {ThresholdSignature} = require("../algo/ecdsa-mpc");
 const {arrayify} = require("ethers/lib/utils");
 const {ThresholdSchnorr} = require("../algo/schnorr-threshold");
 
