@@ -3,7 +3,7 @@ const {ethers} = require("hardhat");
 
 const {randomBytes, randomInt} = require('crypto')
 const secp256k1 = require('secp256k1')
-const {ThresholdECDSA} = require("../algo/ecdsa-mpc");
+const {ThresholdECDSA} = require("../algo/ecdsa-threshold");
 const {red, BN} = require("../algo");
 const {Lagrange} = require("../algo/components/lagrange");
 const {SSS} = require("../algo/components/nfeldman-keygen");

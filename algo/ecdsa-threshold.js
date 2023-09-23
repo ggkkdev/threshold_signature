@@ -10,20 +10,20 @@ const {SSS} = require("./components/nfeldman-keygen");
 class ThresholdECDSA {
     constructor(numParticipants, threshold, pailliers) {
         this.pailliers = pailliers
-        const {pk, skis, pkis, shares, polynomialSkis}=SSS.keygen(numParticipants, threshold)
-        this.pk=pk
-        this.skis=skis
-        this.pkis=pkis
-        this.shares=shares
-        this.polynomialSkis=polynomialSkis
+        const {pk, skis, pkis, shares, polynomialSkis} = SSS.keygen(numParticipants, threshold)
+        this.pk = pk
+        this.skis = skis
+        this.pkis = pkis
+        this.shares = shares
+        this.polynomialSkis = polynomialSkis
     }
 
-    static async build(numParticipants, threshold ) {
+    static async build(numParticipants, threshold) {
         const pailliers = await Promise.all([...Array(numParticipants).keys()].map(async e => {
             const {publicKey, privateKey} = await paillierBigint.generateRandomKeys(1024)
             return {publicKey, privateKey};
         }));
-        return new ThresholdECDSA(numParticipants, threshold,pailliers);
+        return new ThresholdECDSA(numParticipants, threshold, pailliers);
     }
 
     sign(m, signers) {
@@ -56,6 +56,12 @@ class ThresholdECDSA {
         }
     }
 
+    /**
+     * Reconstruct r to be ready to sign
+     * TODO add verification process described in the paper
+     * @param signers indexes of the signers for a specific signature
+     * @returns {{wis: *, Gamma: Uint8Array, r: Uint8Array, R: Uint8Array, kis: *, sigmais, delta: *, gammais: *}}
+     */
     deal(signers) {
         const kis = signers.map(_ => new BN(randomBytesVerified(32)).toRed(red))
         const gammais = signers.map(_ => new BN(randomBytesVerified(32)).toRed(red))
@@ -95,4 +101,4 @@ class ThresholdECDSA {
     }
 }
 
-module.exports ={ThresholdECDSA}
+module.exports = {ThresholdECDSA}

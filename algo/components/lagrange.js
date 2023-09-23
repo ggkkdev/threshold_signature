@@ -1,5 +1,8 @@
 const {BN} = require("../index");
 
+/**
+ * Generic lagrange interpolation
+ */
 class Lagrange {
     constructor(xs, ys) {
         this.xs = xs

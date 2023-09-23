@@ -2,7 +2,6 @@ const {ethers} = require("hardhat");
 
 const {randomBytes, randomInt} = require('crypto')
 const secp256k1 = require('secp256k1')
-const {Polynomial} = require("./components/polynomial");
 const {red, BN} = require("./index");
 const {arrayify} = require("ethers/lib/utils");
 const {Lagrange} = require("./components/lagrange");

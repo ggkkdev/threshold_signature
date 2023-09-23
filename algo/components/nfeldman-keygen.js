@@ -3,6 +3,14 @@ const {Polynomial} = require("./polynomial");
 const {BN, red} = require("../index");
 
 class SSS {
+
+    /**
+     * Key generation with n parallel feldman protocols
+     * TODO: add verifiable property
+     * @param numParticipants number of participants in the protocol
+     * @param threshold number of required participants for a valid signature
+     * @returns {{shares, pkis: Uint8Array[], skis: *[], pk: Uint8Array, polynomialSkis: Polynomial[]}} shares
+     */
     static keygen(numParticipants, threshold) {
         let polynomialSkis, xs, condition;
         do {
