@@ -21,6 +21,8 @@ class SSS {
         } while (!condition)
         //const xs = [...Array(numParticipants).keys()].map(i => i + 1)
         const shares = this.generateHxs(xs, polynomialSkis)
+        let privVerify = shares.map(e => secp256k1.privateKeyVerify(e.toBuffer()))
+        console.log("privverify s"+privVerify)
         const pkis = polynomialSkis.map(pol => secp256k1.publicKeyCreate(pol.evaluate(0).toBuffer()))
         const skis = polynomialSkis.map(pol => pol.evaluate(0))
         const pk = secp256k1.publicKeyCombine(pkis)

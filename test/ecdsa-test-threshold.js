@@ -7,6 +7,7 @@ const {ThresholdECDSA} = require("../algo/ecdsa-threshold");
 const {red, BN} = require("../algo");
 const {Lagrange} = require("../algo/components/lagrange");
 const {SSS} = require("../algo/components/nfeldman-keygen");
+const {joinSignature} = require("../algo/utils");
 
 
 describe("ECDSA", function () {
@@ -47,12 +48,6 @@ describe("ECDSA", function () {
         const messageHash = ethers.utils.hashMessage(bytes);
         expect(await ecdsa.recover(messageHash, sig.v, sig.r, sig.s)).to.equal(owner.address);
     })
-
-    it("Should verify MPC signature", async function () {
-        const signature = ethers.utils.joinSignature(sig)
-        let verified = ethers.utils.recoverAddress(m, signature);
-        expect(verified).to.equal(owner.address)
-    });
     it("Should verify MPC signature with solidity", async function () {
         const bytes = ethers.utils.arrayify(m);
         let recovered = await ecdsa.recover(bytes, sig.v, sig.r, sig.s)
@@ -60,6 +55,12 @@ describe("ECDSA", function () {
         console.log("verify gas cost:", gas);
         expect(recovered).to.equal(owner.address);
     });
+    it("Should verify MPC signature", async function () {
+        const signature = joinSignature(sig)
+        let verified = ethers.utils.recoverAddress(m, signature);
+        expect(verified).to.equal(owner.address)
+    });
+
 
     describe("verify deal", function () {
         const participantsNb = 5;

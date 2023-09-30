@@ -46,7 +46,7 @@ class ThresholdECDSA {
         let val1 = _val1.clone();
         let val2 = _val2.clone()
         const c1 = key1.publicKey.encrypt(bufToBigint(val1.toBuffer()));
-        const betaPrime = bufToBigint(randomBytes(32))
+        const betaPrime = bufToBigint(randomBytesVerified(32))
         const c2 = key1.publicKey.addition(key1.publicKey.multiply(c1, bufToBigint(val2.toBuffer())), key1.publicKey.encrypt(betaPrime));
         const alpha = new BN(key1.privateKey.decrypt(c2)).toRed(red)
         const beta = new BN(ec.n).add(new BN(betaPrime).toRed(red).neg()).toRed(red)

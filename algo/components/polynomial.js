@@ -1,5 +1,5 @@
 const {randomBytes} = require("ethers/lib/utils");
-const {BN, red} = require("../index");
+const {BN, red, randomBytesVerified} = require("../index");
 
 class Polynomial {
     constructor(_coeffs = []) {
@@ -7,7 +7,7 @@ class Polynomial {
     }
 
     static random(_order) {
-        return new Polynomial([...Array(_order).keys()].map(e => randomBytes(32)))
+        return new Polynomial([...Array(_order).keys()].map(e => randomBytesVerified(32)))
     }
 
     evaluate(x) {
