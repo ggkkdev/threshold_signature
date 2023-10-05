@@ -10,7 +10,8 @@ const {SSS} = require("./components/nfeldman-keygen");
 class ThresholdECDSA {
     constructor(numParticipants, threshold, pailliers) {
         this.pailliers = pailliers
-        const {pk, skis, pkis, shares, polynomialSkis} = SSS.keygen(numParticipants, threshold)
+        const xs = [...Array(numParticipants).keys()].map(i => i + 1)
+        const {pk, skis, pkis, shares, polynomialSkis} = SSS.keygen(xs, threshold)
         this.pk = pk
         this.skis = skis
         this.pkis = pkis

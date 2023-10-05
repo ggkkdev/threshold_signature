@@ -10,18 +10,21 @@ const {SSS} = require("./components/nfeldman-keygen");
 
 class ThresholdSchnorr {
     constructor(numParticipants, threshold) {
-        const {pk, skis, pkis, shares, polynomialSkis} = SSS.keygen(numParticipants, threshold)
+        const xs = [...Array(numParticipants).keys()].map(i => i + 1)
+        const {pk, skis, pkis, shares, polynomialSkis} = SSS.keygen(xs, threshold)
         this.polynomialSkis = polynomialSkis
         this.shares = shares
         this.pk = pk
+        this.numParticipants = numParticipants
+        this.threshold = threshold
     }
 
     deal(signers, polynomialSkis) {
-        const xs = signers.map(_ => randomBytes(32))
-        const kis = SSS.generateHxs(xs, signers.map(i => polynomialSkis[i]))
-        const lagrange = new Lagrange(signers.map(i => new BN(i + 1).toRed(red)), kis)
-        const k = lagrange.evaluate(new BN(0).toRed(red))
-        const R = secp256k1.publicKeyCreate(k.toBuffer())
+        const xs = signers.map(i => i + 1)
+        const dataForKis = SSS.keygen(xs, this.threshold)
+        const k = dataForKis.skis.reduce((acc,e)=>acc.redAdd(e))
+        const R=dataForKis.pk
+        const kis=dataForKis.shares
         return {k, R, kis}
     }
 

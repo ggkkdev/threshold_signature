@@ -11,15 +11,13 @@ class SSS {
      * @param threshold number of required participants for a valid signature
      * @returns {{shares, pkis: Uint8Array[], skis: *[], pk: Uint8Array, polynomialSkis: Polynomial[]}} shares
      */
-    static keygen(numParticipants, threshold) {
-        let polynomialSkis, xs, condition;
+    static keygen(xs, threshold) {
+        let polynomialSkis, condition;
         do {
-            polynomialSkis = [...Array(numParticipants).keys()].map(e => Polynomial.random(threshold));
-            xs = [...Array(numParticipants).keys()].map(i => i + 1)
+            polynomialSkis = [...Array(xs.length).keys()].map(e => Polynomial.random(threshold));
             let privVerify = polynomialSkis.map(pol => secp256k1.privateKeyVerify(pol.evaluate(0).toBuffer()))
             condition = privVerify.every(v => v === true);
         } while (!condition)
-        //const xs = [...Array(numParticipants).keys()].map(i => i + 1)
         const shares = this.generateHxs(xs, polynomialSkis)
         let privVerify = shares.map(e => secp256k1.privateKeyVerify(e.toBuffer()))
         console.log("privverify s"+privVerify)
